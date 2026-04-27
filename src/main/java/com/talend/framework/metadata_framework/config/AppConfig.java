@@ -1,0 +1,11 @@
+package com.talend.framework.metadata_framework.config;
+
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
+
+@Configuration
+@EnableScheduling
+@EnableConfigurationProperties({TdcProperties.class, HarvestProperties.class})
+public class AppConfig {
+}
