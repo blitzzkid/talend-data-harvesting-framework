@@ -4,25 +4,22 @@ spring:
   profiles:
     active: local
   datasource:
-    url: jdbc:postgresql://localhost:5432/talend_demo
-    username: talend
-    password: talend
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/talend_demo}
+    username: ${DB_USER:talend_admin}
+    password: ${DB_PASSWORD:}
     hikari:
       maximum-pool-size: 10
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
     properties:
       hibernate:
         jdbc:
           time_zone: UTC
-        default_schema: audit
     open-in-view: false
   flyway:
-    enabled: true
-    schemas: audit
-    default-schema: audit
-    baseline-on-migrate: true
+    # Disabled: the audit table is owned by the Talend ETL job, not this service.
+    enabled: false
 
 server:
   port: 8080
@@ -32,30 +29,19 @@ management:
     web:
       exposure:
         include: health,info,metrics
-  endpoint:
-    health:
-      show-details: when-authorized
 
 tdc:
-  base-url: https://tdc.example.com
-  api-path: /MM/api/v1
+  base-url: ${TDC_URL:https://tdc-vm.local}
+  api-path: ${TDC_API_PATH:/MM/api/v1}
+  default-model-id: ${TDC_MODEL_ID:TalendDIModel}
   auth:
-    type: bearer            # bearer | basic
+    type: ${TDC_AUTH_TYPE:bearer}     # bearer | basic
     token: ${TDC_TOKEN:}
     username: ${TDC_USER:}
     password: ${TDC_PASSWORD:}
   request:
     connect-timeout-ms: 5000
     read-timeout-ms: 30000
-  default-model-id: TalendDIModel
-
-harvest:
-  scheduler:
-    enabled: true
-    fixed-delay-ms: 60000
-    batch-size: 100
-  idempotency:
-    natural-key-template: "{jobName}:{runId}"
 
 ---
 spring:
@@ -64,28 +50,13 @@ spring:
       on-profile: local
   datasource:
     url: jdbc:postgresql://localhost:5432/talend_demo
-tdc:
-  base-url: http://localhost:9090
 
 ---
 spring:
   config:
     activate:
-      on-profile: demo-customer-a
+      on-profile: vm
+  # Used when the service runs on the ETL VM and needs to reach TDC across
+  # the network bridge. Override DB_URL / TDC_URL via environment.
   datasource:
-    url: jdbc:postgresql://demo-db:5432/customer_a
-tdc:
-  default-model-id: CustomerA_Model
-harvest:
-  scheduler:
-    fixed-delay-ms: 30000
-
----
-spring:
-  config:
-    activate:
-      on-profile: demo-customer-b
-  datasource:
-    url: jdbc:postgresql://demo-db:5432/customer_b
-tdc:
-  default-model-id: CustomerB_Model
+    url: ${DB_URL:jdbc:postgresql://etl-vm:5432/talend_demo}

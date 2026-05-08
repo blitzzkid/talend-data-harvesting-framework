@@ -1,17 +1,24 @@
 package com.talend.framework.metadata_framework.harvest;
 
-import com.talend.framework.metadata_framework.model.HarvestPayload;
+import com.talend.framework.metadata_framework.model.ParsedAuditRecord;
 
-import java.util.UUID;
+import java.time.LocalDateTime;
+import java.util.List;
 
 public interface HarvestService {
 
-    /** Build the internal model for a single job run from audit tables. */
-    HarvestPayload buildPayload(UUID runId);
+    /** Read one audit row by its primary key and return the parsed form. */
+    ParsedAuditRecord parseRecord(Integer jobId);
 
-    /** Push a single job run end-to-end into TDC. */
-    HarvestResult harvestRun(UUID runId);
+    /** Read all audit rows for a Talend job, oldest first. */
+    List<ParsedAuditRecord> parseRecordsForJob(String jobName);
 
-    /** Push every new run for a customer since the last watermark. */
-    HarvestResult harvestCustomer(String customerId);
+    /** Read every audit row newer than the given timestamp, oldest first. */
+    List<ParsedAuditRecord> parseRecordsSince(LocalDateTime since);
+
+    /** Read every audit row, oldest first. */
+    List<ParsedAuditRecord> parseAllRecords();
+
+    /** Push one audit row's lineage into TDC. Pending objective 2. */
+    HarvestResult harvestRecord(Integer jobId);
 }
