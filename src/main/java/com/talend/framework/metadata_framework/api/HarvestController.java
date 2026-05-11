@@ -2,6 +2,7 @@ package com.talend.framework.metadata_framework.api;
 
 import com.talend.framework.metadata_framework.harvest.HarvestResult;
 import com.talend.framework.metadata_framework.harvest.HarvestService;
+import com.talend.framework.metadata_framework.model.JobLineageGraph;
 import com.talend.framework.metadata_framework.model.ParsedAuditRecord;
 import com.talend.framework.metadata_framework.tdc.TdcClient;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -38,6 +39,11 @@ public class HarvestController {
         return service.parseRecordsForJob(jobName);
     }
 
+    @GetMapping("/job/{jobName}/lineage")
+    public JobLineageGraph previewJobLineage(@PathVariable String jobName) {
+        return service.buildJobLineage(jobName);
+    }
+
     @GetMapping("/since")
     public List<ParsedAuditRecord> previewSince(
             @RequestParam("since")
@@ -50,9 +56,9 @@ public class HarvestController {
         return service.parseAllRecords();
     }
 
-    @PostMapping("/record/{jobId}")
-    public HarvestResult harvest(@PathVariable Integer jobId) {
-        return service.harvestRecord(jobId);
+    @PostMapping("/job/{jobName}")
+    public HarvestResult harvestJob(@PathVariable String jobName) {
+        return service.harvestJob(jobName);
     }
 
     @GetMapping("/status")

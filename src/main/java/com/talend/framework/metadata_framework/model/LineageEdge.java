@@ -1,16 +1,16 @@
 package com.talend.framework.metadata_framework.model;
 
+import com.talend.framework.metadata_framework.audit.Stage;
+
 /**
- * Future TDC payload carrier. Not used for objective 1 — kept as scaffolding
- * for the TDC push step (objective 2).
+ * One directed edge in the lineage graph — {@code sourceDatasetId -> targetDatasetId}.
+ * {@code stage} and {@code component} are kept as edge attributes so TDC can
+ * render which Talend pipeline step produced the edge.
  */
 public record LineageEdge(
-        String sourceSchema,
-        String sourceTable,
-        String sourceColumn,
-        String targetSchema,
-        String targetTable,
-        String targetColumn,
-        String transformationExpr
+        String sourceDatasetId,
+        String targetDatasetId,
+        Stage stage,
+        String component
 ) {
 }

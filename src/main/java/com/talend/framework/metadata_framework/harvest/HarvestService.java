@@ -1,5 +1,6 @@
 package com.talend.framework.metadata_framework.harvest;
 
+import com.talend.framework.metadata_framework.model.JobLineageGraph;
 import com.talend.framework.metadata_framework.model.ParsedAuditRecord;
 
 import java.time.LocalDateTime;
@@ -19,6 +20,13 @@ public interface HarvestService {
     /** Read every audit row, oldest first. */
     List<ParsedAuditRecord> parseAllRecords();
 
-    /** Push one audit row's lineage into TDC. Pending objective 2. */
-    HarvestResult harvestRecord(Integer jobId);
+    /**
+     * Build the lineage graph for a job's run from its audit rows. Treats all
+     * rows for the job name as one run — multi-run support (time-window
+     * clustering or a run_id column) is deferred.
+     */
+    JobLineageGraph buildJobLineage(String jobName);
+
+    /** Build {@link #buildJobLineage} and push the result to TDC. */
+    HarvestResult harvestJob(String jobName);
 }

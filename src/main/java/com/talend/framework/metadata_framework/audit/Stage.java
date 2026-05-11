@@ -23,4 +23,13 @@ public enum Stage {
         }
         return UNKNOWN;
     }
+
+    /**
+     * True for stages that represent actual data movement and should produce
+     * lineage edges. {@code COLUMN_MAPPING_LOADED} is a config-load event
+     * (not a dataflow event) and is excluded from the lineage push.
+     */
+    public boolean contributesToLineage() {
+        return this != COLUMN_MAPPING_LOADED && this != UNKNOWN;
+    }
 }
