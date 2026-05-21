@@ -48,5 +48,7 @@ HELP.md.bak
 *.key
 
 # Local override config
+application-local.yml
+application-local.properties
 application-local-*.yml
 application-local-*.properties
