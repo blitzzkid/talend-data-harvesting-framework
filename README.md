@@ -1,6 +1,6 @@
 # talend-data-harvesting-framework
 
-Spring Boot service that reads Talend ETL audit records from PostgreSQL and publishes dataset/lineage metadata to Talend Data Catalog (TDC) via its REST API.
+Spring Boot service that reads ETL audit records from PostgreSQL, builds a dataset/lineage graph, and serializes it into a Talend Data Catalog (TDC) **Data Mapping Script** (`.sql`). TDC's "Data Mapping Script" import bridge ingests that script to visualize data lineage. Because it is driven off a generic audit table — not Talend-specific internals — it works for any ETL tool that writes the audit table.
 
 - **Spring Boot** 4.0.6 · **Java** 21 · **Gradle** (wrapper included)
 - **PostgreSQL** — audit table written by Talend Studio ETL jobs (VM `10.4.20.136`)
@@ -32,9 +32,17 @@ tdc:
   default-model-id: Published        # name shown in TDC > Manage > Configuration Manager
 
   auth:
-    type: basic
     username: <your-tdc-username>
     password: <your-tdc-password>
+
+  # How the generated Data Mapping Script reaches TDC.
+  import:
+    delivery: sftp                  # 'sftp' = upload to the TDC VM; 'local' = write to a folder
+    sftp:
+      username: <vm-ssh-username>   # e.g. work-admin
+      password: <vm-ssh-password>
+      # host/port/remote-dir default to localhost / 2222 / /home/work-admin/SQL/
+      # (localhost:2222 is the SSH tunnel to the TDC VM — see Terminal 3 below)
 
 spring:
   datasource:
@@ -42,6 +50,8 @@ spring:
     username: talend_admin
     password: <db-password>
 ```
+
+> For a quick first run without SFTP, set `tdc.import.delivery: local`; the app writes the `.sql` to `build/tdc-scripts/` and you copy it onto the TDC VM yourself.
 
 ---
 
@@ -62,7 +72,13 @@ ssh -N -L 11480:localhost:11480 work-admin@10.4.20.156
 ssh -N -L 5433:localhost:5432 work-admin@10.4.20.136
 ```
 
-WSL2 automatically forwards these ports to Windows, so the Java process sees them as `localhost:11480` and `localhost:5433`.  
+**Terminal 3 — SFTP delivery to Talend Data Catalog (10.4.20.156)**
+```bash
+ssh -N -L 2222:localhost:22 work-admin@10.4.20.156
+```
+Forwards the TDC VM's SSH port so the app can SFTP the generated Data Mapping Script into `/home/work-admin/SQL/` on the VM. Running two tunnels to the same VM on different *local* ports (`11480` and `2222`) is fine — they are independent SSH sessions and do not conflict. Only needed when `tdc.import.delivery: sftp`.
+
+WSL2 automatically forwards these ports to Windows, so the Java process sees them as `localhost:11480`, `localhost:5433`, and `localhost:2222`.  
 PostgreSQL sees the connection as coming from its own localhost, so no `pg_hba.conf` changes are needed.
 
 > **Optional — persistent tunnels with autossh** (auto-reconnects on drop):
@@ -70,6 +86,7 @@ PostgreSQL sees the connection as coming from its own localhost, so no `pg_hba.c
 > sudo apt install autossh
 > autossh -N -f -L 11480:localhost:11480 work-admin@10.4.20.156
 > autossh -N -f -L 5433:localhost:5432   work-admin@10.4.20.136
+> autossh -N -f -L 2222:localhost:22     work-admin@10.4.20.156
 > ```
 
 ---
@@ -148,9 +165,10 @@ src/
 │   ├── api/          HarvestController       — REST endpoint to trigger harvesting
 │   ├── audit/        AuditRecord, Parser      — reads ETL audit rows from Postgres
 │   ├── config/       AppConfig, TdcProperties — configuration beans
-│   ├── harvest/      HarvestService           — orchestrates audit → TDC flow
+│   ├── harvest/      HarvestService           — orchestrates audit → script → delivery
 │   ├── model/        Dataset, LineageEdge, …  — domain model
-│   └── tdc/          TdcRestClient            — POSTs metadata to TDC REST API
+│   └── tdc/          DataMappingScriptWriter  — serializes the lineage graph to a .sql script
+│                     ScriptPublisher            and delivers it (local file / SFTP) to TDC
 └── main/resources/
     ├── application.yml              — base config (committed)
     └── application-local.yml        — local secrets (git-ignored, created manually)

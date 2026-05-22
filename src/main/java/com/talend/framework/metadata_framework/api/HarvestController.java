@@ -1,10 +1,10 @@
 package com.talend.framework.metadata_framework.api;
 
+import com.talend.framework.metadata_framework.config.TdcImportProperties;
 import com.talend.framework.metadata_framework.harvest.HarvestResult;
 import com.talend.framework.metadata_framework.harvest.HarvestService;
 import com.talend.framework.metadata_framework.model.JobLineageGraph;
 import com.talend.framework.metadata_framework.model.ParsedAuditRecord;
-import com.talend.framework.metadata_framework.tdc.TdcClient;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -22,11 +23,11 @@ import java.util.Map;
 public class HarvestController {
 
     private final HarvestService service;
-    private final TdcClient tdcClient;
+    private final TdcImportProperties importProperties;
 
-    public HarvestController(HarvestService service, TdcClient tdcClient) {
+    public HarvestController(HarvestService service, TdcImportProperties importProperties) {
         this.service = service;
-        this.tdcClient = tdcClient;
+        this.importProperties = importProperties;
     }
 
     @GetMapping("/record/{jobId}")
@@ -63,6 +64,15 @@ public class HarvestController {
 
     @GetMapping("/status")
     public Map<String, Object> status() {
-        return Map.of("tdcReachable", tdcClient.ping());
+        TdcImportProperties.Delivery delivery = importProperties.getDelivery();
+        Map<String, Object> status = new LinkedHashMap<>();
+        status.put("delivery", delivery);
+        if (delivery == TdcImportProperties.Delivery.SFTP) {
+            TdcImportProperties.Sftp s = importProperties.getSftp();
+            status.put("target", s.getHost() + ":" + s.getPort() + s.getRemoteDir());
+        } else {
+            status.put("target", importProperties.getOutputDir());
+        }
+        return status;
     }
 }
