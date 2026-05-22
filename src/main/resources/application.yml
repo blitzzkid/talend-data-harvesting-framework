@@ -32,12 +32,15 @@ management:
 
 tdc:
   base-url: ${TDC_URL:https://tdc-vm.local}
-  api-path: ${TDC_API_PATH:/MM/api/v1}
+  # api-path is no longer used for routing (the internal /MM/api/ paths are
+  # hardcoded in TdcRestClient/TdcSession), but kept here for reference.
+  api-path: ${TDC_API_PATH:/MM/api}
   default-model-id: ${TDC_MODEL_ID:TalendDIModel}
   auth:
-    type: ${TDC_AUTH_TYPE:bearer}     # bearer | basic
-    token: ${TDC_TOKEN:}
+    # TDC uses session-based auth: credentials are POSTed once to
+    # /MM/j_spring_security_check; the auth.type field is no longer used.
     username: ${TDC_USER:}
+    password: ${TDC_PASSWORD:}
     password: ${TDC_PASSWORD:}
   request:
     connect-timeout-ms: 5000
