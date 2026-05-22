@@ -53,7 +53,10 @@ tdc:
       host: ${TDC_SFTP_HOST:localhost}              # SSH-tunnel endpoint, not the VM IP
       port: ${TDC_SFTP_PORT:2222}
       username: ${TDC_SFTP_USER:}
-      password: ${TDC_SFTP_PASSWORD:}
+      # Key-based auth (preferred): point at the same key used for `ssh work-admin@<vm>`.
+      private-key-path: ${TDC_SFTP_KEY:}
+      passphrase: ${TDC_SFTP_PASSPHRASE:}           # only if the key is encrypted
+      password: ${TDC_SFTP_PASSWORD:}               # fallback if no key is configured
       remote-dir: ${TDC_SFTP_REMOTE_DIR:/home/work-admin/SQL/}
       strict-host-key-checking: ${TDC_SFTP_STRICT_HOST_KEY:false}
 

@@ -43,11 +43,23 @@ public class TdcImportProperties {
         private String host = "localhost";
         private int port = 2222;
         private String username;
+        /**
+         * Authentication. Prefer key-based: set {@link #privateKeyPath} (the same key
+         * you use for {@code ssh work-admin@<vm>}), to a file the JVM can read. If a key
+         * is configured it is used and {@link #password} is ignored. {@link #passphrase}
+         * is only needed for an encrypted key.
+         */
+        private String privateKeyPath;
+        private String passphrase;
         private String password;
         /** Directory on the TDC VM that the Data Mapping Script bridge scans. */
         private String remoteDir = "/home/work-admin/SQL/";
         /** Off by default: the tunnel endpoint key is the VM's and changes per environment. */
         private boolean strictHostKeyChecking = false;
         private int connectTimeoutMs = 10000;
+
+        public boolean usesKeyAuth() {
+            return privateKeyPath != null && !privateKeyPath.isBlank();
+        }
     }
 }

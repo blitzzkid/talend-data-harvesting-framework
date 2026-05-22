@@ -40,7 +40,11 @@ tdc:
     delivery: sftp                  # 'sftp' = upload to the TDC VM; 'local' = write to a folder
     sftp:
       username: <vm-ssh-username>   # e.g. work-admin
-      password: <vm-ssh-password>
+      # Key-based auth (same key you use for `ssh work-admin@10.4.20.156`).
+      # Must be a path the app's JVM can read; on Windows, e.g. C:/Users/<you>/.ssh/id_ed25519
+      private-key-path: <path-to-your-private-key>
+      # passphrase: <only-if-the-key-is-encrypted>
+      # password: <vm-ssh-password>   # alternative if you don't use a key
       # host/port/remote-dir default to localhost / 2222 / /home/work-admin/SQL/
       # (localhost:2222 is the SSH tunnel to the TDC VM — see Terminal 3 below)
 

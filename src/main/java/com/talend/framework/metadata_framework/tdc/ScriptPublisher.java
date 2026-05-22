@@ -63,8 +63,20 @@ public class ScriptPublisher {
         ChannelSftp channel = null;
         try {
             JSch jsch = new JSch();
+            if (s.usesKeyAuth()) {
+                // Same key you use for `ssh work-admin@<vm>`. mwiede/jsch supports
+                // OpenSSH-format keys including ed25519.
+                if (s.getPassphrase() != null && !s.getPassphrase().isBlank()) {
+                    jsch.addIdentity(s.getPrivateKeyPath(), s.getPassphrase());
+                } else {
+                    jsch.addIdentity(s.getPrivateKeyPath());
+                }
+            }
+
             session = jsch.getSession(s.getUsername(), s.getHost(), s.getPort());
-            session.setPassword(s.getPassword());
+            if (!s.usesKeyAuth() && s.getPassword() != null && !s.getPassword().isBlank()) {
+                session.setPassword(s.getPassword());
+            }
 
             Properties cfg = new Properties();
             cfg.put("StrictHostKeyChecking", s.isStrictHostKeyChecking() ? "yes" : "no");
