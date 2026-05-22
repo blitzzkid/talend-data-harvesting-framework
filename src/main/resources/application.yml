@@ -41,7 +41,6 @@ tdc:
     # /MM/j_spring_security_check; the auth.type field is no longer used.
     username: ${TDC_USER:}
     password: ${TDC_PASSWORD:}
-    password: ${TDC_PASSWORD:}
   request:
     connect-timeout-ms: 5000
     read-timeout-ms: 30000
