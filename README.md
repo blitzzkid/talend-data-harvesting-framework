@@ -1,6 +1,13 @@
 # talend-data-harvesting-framework
 
-Spring Boot service that reads ETL audit records from PostgreSQL, builds a dataset/lineage graph, and publishes it to Talend Data Catalog (TDC) via its REST API (session login → authenticated `POST`). Because it is driven off a generic audit table — not Talend-specific internals — it works for any ETL tool that writes the audit table.
+Middleware between an ETL audit table and Talend Data Catalog (TDC).
+
+TDC harvests the PostgreSQL database directly (via a JDBC Imported Model) so it knows the tables and columns — *the dots*. But a database doesn't record *how* its tables were populated, so TDC can't draw lineage on its own. This service supplies that missing layer from the ETL audit table: it reads the audit records (job name/id, source & target table/schema), then, against TDC's REST API (session login → authenticated `POST`), it
+
+1. **refreshes** the harvested JDBC model so the catalog matches the live DB, and
+2. **pushes the source→target lineage** into a TDC **Data Mapping model**, which TDC stitches to the harvested model in a configuration to compute end-to-end lineage — *connecting the dots*.
+
+Because it is driven off a generic audit table — not Talend-specific internals — it works for any ETL tool that writes the audit table.
 
 - **Spring Boot** 4.0.6 · **Java** 21 · **Gradle** (wrapper included)
 - **PostgreSQL** — audit table written by Talend Studio ETL jobs (VM `10.4.20.136`)

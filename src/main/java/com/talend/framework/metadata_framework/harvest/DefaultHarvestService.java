@@ -5,7 +5,6 @@ import com.talend.framework.metadata_framework.audit.AuditRecord;
 import com.talend.framework.metadata_framework.audit.StepInfo;
 import com.talend.framework.metadata_framework.audit.AuditRecordRepository;
 import com.talend.framework.metadata_framework.config.TdcProperties;
-import com.talend.framework.metadata_framework.model.Dataset;
 import com.talend.framework.metadata_framework.model.JobLineageGraph;
 import com.talend.framework.metadata_framework.model.ParsedAuditRecord;
 import com.talend.framework.metadata_framework.tdc.TdcClient;
@@ -87,42 +86,38 @@ public class DefaultHarvestService implements HarvestService {
         int considered = graph.datasets().size();
 
         if (graph.datasets().isEmpty() && graph.edges().isEmpty()) {
-            return new HarvestResult(jobName, 0, 0, 0, List.of(),
+            return new HarvestResult(jobName, 0, 0, false, List.of(),
                     "No lineage-bearing audit rows for job " + jobName);
         }
 
-        String modelId = tdcProperties.getDefaultModelId();
-        String folderPath = "/Talend/Jobs/" + jobName;
         List<String> failures = new ArrayList<>();
-        int datasetsUpserted = 0;
 
-        for (Dataset d : graph.datasets()) {
-            try {
-                tdcClient.upsertDataset(folderPath, modelId, d);
-                datasetsUpserted++;
-            } catch (Exception ex) {
-                String msg = "dataset " + d.id() + ": " + ex.getMessage();
-                log.warn("TDC dataset POST failed — {}", msg);
-                failures.add(msg);
-            }
+        // 1) Refresh the harvested JDBC model so TDC's "dots" match the live DB.
+        boolean modelRefreshed = false;
+        try {
+            tdcClient.refreshModel(tdcProperties.getHarvestedModelId());
+            modelRefreshed = true;
+        } catch (Exception ex) {
+            log.warn("TDC model refresh failed — {}", ex.getMessage());
+            failures.add("refresh: " + ex.getMessage());
         }
 
-        int edgesUpserted = 0;
+        // 2) Push the audit-derived lineage so TDC can "connect the dots".
+        int edgesPushed = 0;
         if (!graph.edges().isEmpty()) {
             try {
-                tdcClient.upsertLineage(modelId, graph.edges());
-                edgesUpserted = graph.edges().size();
+                tdcClient.pushLineage(tdcProperties.getLineageModelId(), graph);
+                edgesPushed = graph.edges().size();
             } catch (Exception ex) {
-                String msg = "lineage: " + ex.getMessage();
-                log.warn("TDC lineage POST failed — {}", msg);
-                failures.add(msg);
+                log.warn("TDC lineage push failed — {}", ex.getMessage());
+                failures.add("lineage: " + ex.getMessage());
             }
         }
 
         String message = failures.isEmpty()
-                ? "OK"
+                ? "OK — refreshed model and pushed " + edgesPushed + " lineage edge(s)"
                 : failures.size() + " call(s) failed; see failures";
-        return new HarvestResult(jobName, considered, datasetsUpserted, edgesUpserted,
+        return new HarvestResult(jobName, considered, edgesPushed, modelRefreshed,
                 failures, message);
     }
 

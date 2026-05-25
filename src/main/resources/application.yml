@@ -35,7 +35,10 @@ tdc:
   # api-path is no longer used for routing (the internal /MM/api/ paths are
   # hardcoded in TdcRestClient/TdcSession), but kept here for reference.
   api-path: ${TDC_API_PATH:/MM/api}
-  default-model-id: ${TDC_MODEL_ID:TalendDIModel}
+  # The PostgreSQL (JDBC) Imported Model — the harvested tables/columns ("the dots").
+  harvested-model-id: ${TDC_HARVESTED_MODEL_ID:}
+  # The Data Mapping model the audit lineage is pushed into ("the connections").
+  lineage-model-id: ${TDC_LINEAGE_MODEL_ID:}
   auth:
     # TDC uses session-based auth: credentials are POSTed once to
     # /MM/j_spring_security_check; the auth.type field is no longer used.
@@ -44,11 +47,11 @@ tdc:
   request:
     connect-timeout-ms: 5000
     read-timeout-ms: 30000
-  # Internal /MM/api operation paths used to POST metadata. Capture the exact
-  # path + payload from Chrome DevTools > Network in the TDC UI, then set here.
+  # Internal /MM/api operation paths. Capture the exact path + payload from
+  # Chrome DevTools > Network in the TDC UI, then set here. Blank until known.
   api:
-    dataset-path: ${TDC_DATASET_PATH:}
-    lineage-path: ${TDC_LINEAGE_PATH:}
+    refresh-path: ${TDC_REFRESH_PATH:}      # re-harvest the harvested-model-id
+    lineage-path: ${TDC_LINEAGE_PATH:}      # push lineage into lineage-model-id
 
 ---
 spring:

@@ -11,7 +11,10 @@ public class TdcProperties {
 
     private String baseUrl;
     private String apiPath;
-    private String defaultModelId;
+    /** The PostgreSQL (JDBC) Imported Model — the harvested tables/columns ("the dots") to refresh. */
+    private String harvestedModelId;
+    /** The Data Mapping model the audit lineage is pushed into ("the connections"), stitched to the harvested model. */
+    private String lineageModelId;
     private Auth auth = new Auth();
     private Request request = new Request();
     private Api api = new Api();
@@ -21,13 +24,13 @@ public class TdcProperties {
      * uses (the documented {@code /MM/api/v1} REST API is not the one in play
      * here). These are not publicly documented: capture the exact operation
      * path and JSON payload from Chrome DevTools &gt; Network while performing
-     * the create/import in the TDC UI, then set them here. Left blank until
-     * confirmed, so a misconfigured push fails loudly instead of guessing.
+     * the refresh/import in the TDC UI, then set them here. Left blank until
+     * confirmed, so a misconfigured call fails loudly instead of guessing.
      */
     @Getter
     @Setter
     public static class Api {
-        private String datasetPath;
+        private String refreshPath;
         private String lineagePath;
     }
 
