@@ -99,7 +99,7 @@ public class DefaultHarvestService implements HarvestService {
                     "OK — delivered via " + delivered.mechanism()
                             + "; import the model in TDC to publish lineage");
         } catch (Exception ex) {
-            log.warn("Data Mapping Script delivery failed for job {} — {}", jobName, ex.getMessage());
+            log.warn("Data Mapping Script delivery failed for job {}", jobName, ex);
             return new HarvestResult(jobName, datasets, 0, 0, null,
                     List.of(ex.getMessage()), "Delivery failed: " + ex.getMessage());
         }

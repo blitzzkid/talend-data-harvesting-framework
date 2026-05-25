@@ -96,7 +96,9 @@ public class ScriptPublisher {
             return new PublishResult("sftp", dest);
         } catch (Exception ex) {
             throw new ScriptDeliveryException(
-                    "SFTP upload failed to " + s.getHost() + ":" + s.getPort() + s.getRemoteDir(), ex);
+                    "SFTP upload failed to " + s.getHost() + ":" + s.getPort() + s.getRemoteDir()
+                            + " (auth=" + (s.usesKeyAuth() ? "key:" + s.getPrivateKeyPath() : "password")
+                            + ") — " + ex.getMessage(), ex);
         } finally {
             if (channel != null) {
                 channel.disconnect();
