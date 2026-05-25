@@ -14,6 +14,22 @@ public class TdcProperties {
     private String defaultModelId;
     private Auth auth = new Auth();
     private Request request = new Request();
+    private Api api = new Api();
+
+    /**
+     * Write endpoints for the internal {@code /MM/api/} RPC API the TDC web UI
+     * uses (the documented {@code /MM/api/v1} REST API is not the one in play
+     * here). These are not publicly documented: capture the exact operation
+     * path and JSON payload from Chrome DevTools &gt; Network while performing
+     * the create/import in the TDC UI, then set them here. Left blank until
+     * confirmed, so a misconfigured push fails loudly instead of guessing.
+     */
+    @Getter
+    @Setter
+    public static class Api {
+        private String datasetPath;
+        private String lineagePath;
+    }
 
     @Getter
     @Setter

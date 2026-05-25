@@ -44,21 +44,11 @@ tdc:
   request:
     connect-timeout-ms: 5000
     read-timeout-ms: 30000
-  # How harvested lineage reaches TDC: serialized as a Data Mapping Script and
-  # delivered for the "Data Mapping Script" import bridge to read.
-  import:
-    delivery: ${TDC_IMPORT_DELIVERY:local}          # local | sftp
-    output-dir: ${TDC_IMPORT_OUTPUT_DIR:build/tdc-scripts}
-    sftp:
-      host: ${TDC_SFTP_HOST:localhost}              # SSH-tunnel endpoint, not the VM IP
-      port: ${TDC_SFTP_PORT:2222}
-      username: ${TDC_SFTP_USER:}
-      # Key-based auth (preferred): point at the same key used for `ssh work-admin@<vm>`.
-      private-key-path: ${TDC_SFTP_KEY:}
-      passphrase: ${TDC_SFTP_PASSPHRASE:}           # only if the key is encrypted
-      password: ${TDC_SFTP_PASSWORD:}               # fallback if no key is configured
-      remote-dir: ${TDC_SFTP_REMOTE_DIR:/home/work-admin/SQL/}
-      strict-host-key-checking: ${TDC_SFTP_STRICT_HOST_KEY:false}
+  # Internal /MM/api operation paths used to POST metadata. Capture the exact
+  # path + payload from Chrome DevTools > Network in the TDC UI, then set here.
+  api:
+    dataset-path: ${TDC_DATASET_PATH:}
+    lineage-path: ${TDC_LINEAGE_PATH:}
 
 ---
 spring:

@@ -4,17 +4,18 @@ import com.talend.framework.metadata_framework.audit.AuditPayloadParser;
 import com.talend.framework.metadata_framework.audit.AuditRecord;
 import com.talend.framework.metadata_framework.audit.StepInfo;
 import com.talend.framework.metadata_framework.audit.AuditRecordRepository;
+import com.talend.framework.metadata_framework.config.TdcProperties;
+import com.talend.framework.metadata_framework.model.Dataset;
 import com.talend.framework.metadata_framework.model.JobLineageGraph;
 import com.talend.framework.metadata_framework.model.ParsedAuditRecord;
-import com.talend.framework.metadata_framework.tdc.DataMappingScriptWriter;
-import com.talend.framework.metadata_framework.tdc.PublishResult;
-import com.talend.framework.metadata_framework.tdc.ScriptPublisher;
+import com.talend.framework.metadata_framework.tdc.TdcClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 
@@ -26,19 +27,19 @@ public class DefaultHarvestService implements HarvestService {
     private final AuditRecordRepository repo;
     private final AuditPayloadParser parser;
     private final LineageBuilder lineageBuilder;
-    private final DataMappingScriptWriter scriptWriter;
-    private final ScriptPublisher scriptPublisher;
+    private final TdcClient tdcClient;
+    private final TdcProperties tdcProperties;
 
     public DefaultHarvestService(AuditRecordRepository repo,
                                  AuditPayloadParser parser,
                                  LineageBuilder lineageBuilder,
-                                 DataMappingScriptWriter scriptWriter,
-                                 ScriptPublisher scriptPublisher) {
+                                 TdcClient tdcClient,
+                                 TdcProperties tdcProperties) {
         this.repo = repo;
         this.parser = parser;
         this.lineageBuilder = lineageBuilder;
-        this.scriptWriter = scriptWriter;
-        this.scriptPublisher = scriptPublisher;
+        this.tdcClient = tdcClient;
+        this.tdcProperties = tdcProperties;
     }
 
     @Override
@@ -83,26 +84,46 @@ public class DefaultHarvestService implements HarvestService {
     @Override
     public HarvestResult harvestJob(String jobName) {
         JobLineageGraph graph = buildJobLineage(jobName);
-        int datasets = graph.datasets().size();
-        int edges = graph.edges().size();
+        int considered = graph.datasets().size();
 
-        if (datasets == 0 && edges == 0) {
-            return new HarvestResult(jobName, 0, 0, 0, null, List.of(),
+        if (graph.datasets().isEmpty() && graph.edges().isEmpty()) {
+            return new HarvestResult(jobName, 0, 0, 0, List.of(),
                     "No lineage-bearing audit rows for job " + jobName);
         }
 
-        try {
-            String script = scriptWriter.write(graph);
-            PublishResult delivered = scriptPublisher.publish(jobName, script);
-            return new HarvestResult(jobName, datasets, datasets, edges,
-                    delivered.destination(), List.of(),
-                    "OK — delivered via " + delivered.mechanism()
-                            + "; import the model in TDC to publish lineage");
-        } catch (Exception ex) {
-            log.warn("Data Mapping Script delivery failed for job {}", jobName, ex);
-            return new HarvestResult(jobName, datasets, 0, 0, null,
-                    List.of(ex.getMessage()), "Delivery failed: " + ex.getMessage());
+        String modelId = tdcProperties.getDefaultModelId();
+        String folderPath = "/Talend/Jobs/" + jobName;
+        List<String> failures = new ArrayList<>();
+        int datasetsUpserted = 0;
+
+        for (Dataset d : graph.datasets()) {
+            try {
+                tdcClient.upsertDataset(folderPath, modelId, d);
+                datasetsUpserted++;
+            } catch (Exception ex) {
+                String msg = "dataset " + d.id() + ": " + ex.getMessage();
+                log.warn("TDC dataset POST failed — {}", msg);
+                failures.add(msg);
+            }
         }
+
+        int edgesUpserted = 0;
+        if (!graph.edges().isEmpty()) {
+            try {
+                tdcClient.upsertLineage(modelId, graph.edges());
+                edgesUpserted = graph.edges().size();
+            } catch (Exception ex) {
+                String msg = "lineage: " + ex.getMessage();
+                log.warn("TDC lineage POST failed — {}", msg);
+                failures.add(msg);
+            }
+        }
+
+        String message = failures.isEmpty()
+                ? "OK"
+                : failures.size() + " call(s) failed; see failures";
+        return new HarvestResult(jobName, considered, datasetsUpserted, edgesUpserted,
+                failures, message);
     }
 
     private ParsedAuditRecord toParsed(AuditRecord r) {
