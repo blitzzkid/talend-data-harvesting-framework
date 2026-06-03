@@ -32,9 +32,10 @@ management:
 
 tdc:
   base-url: ${TDC_URL:https://tdc-vm.local}
-  # api-path is no longer used for routing (the internal /MM/api/ paths are
-  # hardcoded in TdcRestClient/TdcSession), but kept here for reference.
-  api-path: ${TDC_API_PATH:/MM/api}
+  # Base path of the official MIMM REST API (see
+  # https://metaintegration.net/Products/MIMM/REST-API/). Appended to base-url
+  # by RestClientConfig, so callers use short paths like /auth/login.
+  api-path: ${TDC_API_PATH:/MM/rest/v1}
   # The PostgreSQL (JDBC) Imported Model — the harvested tables/columns ("the dots").
   harvested-model-id: ${TDC_HARVESTED_MODEL_ID:}
   # The Data Mapping model the audit lineage is pushed into ("the connections").

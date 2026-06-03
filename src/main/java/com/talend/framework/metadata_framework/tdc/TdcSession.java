@@ -4,45 +4,41 @@ import com.talend.framework.metadata_framework.config.TdcProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Manages a TDC session: form-based login via {@code /MM/j_spring_security_check},
- * cookie capture ({@code x-auth-token} + {@code clientId}), and nonce retrieval
- * via {@code /MM/api/GetSessionInfo}.
+ * Holds the TDC REST API key obtained from {@code POST /auth/login}.
  *
- * <p>All write calls in {@link TdcRestClient} must include:
+ * <p>Per the official Metadata Management REST API
+ * (<a href="https://metaintegration.net/Products/MIMM/REST-API/">spec</a>):
  * <ul>
- *   <li>{@code Cookie: <cookieHeader()>}</li>
- *   <li>{@code x-nonce: <getNonce()>}</li>
- *   <li>{@code X-Requested-With: XMLHttpRequest}</li>
+ *   <li>Base path: {@code /MM/rest/v1}</li>
+ *   <li>Login: {@code POST /auth/login} with JSON {@code {username, password}}
+ *       → 200 with {@code {token}}; 401 on bad credentials.</li>
+ *   <li>Subsequent calls send the token as the {@code api-key} request header.</li>
  * </ul>
  *
- * <p>TDC sessions expire after ~60 minutes. Call {@link #invalidate()} when a
- * call returns 401/403/500 so the next {@link #ensureAuthenticated()} re-logins.
+ * <p>Login is lazy: {@link #ensureAuthenticated()} is a no-op when a token is
+ * already held. {@link #invalidate()} clears it so the next call re-logs in
+ * (used by the 401/403 retry path in {@link TdcRestClient}).
  */
 @Component
 public class TdcSession {
 
     private static final Logger log = LoggerFactory.getLogger(TdcSession.class);
 
-    private static final String LOGIN_PATH        = "/MM/j_spring_security_check";
-    private static final String SESSION_INFO_PATH = "/MM/api/GetSessionInfo";
+    private static final String LOGIN_PATH = "/auth/login";
 
-    private final RestClient     http;
-    private final TdcProperties  props;
+    private final RestClient    http;
+    private final TdcProperties props;
 
-    private volatile String  authToken;
-    private volatile String  clientId;
-    private volatile String  nonce;
+    private volatile String  apiKey;
     private volatile boolean authenticated = false;
 
     public TdcSession(@Qualifier("tdcHttpClient") RestClient http, TdcProperties props) {
@@ -50,95 +46,62 @@ public class TdcSession {
         this.props = props;
     }
 
-    /** Ensures a valid session exists; performs login if not yet authenticated. */
     public synchronized void ensureAuthenticated() {
         if (!authenticated) {
             login();
         }
     }
 
-    /** Marks the session as invalid so the next call triggers a fresh login. */
     public synchronized void invalidate() {
         authenticated = false;
-        authToken     = null;
-        clientId      = null;
-        nonce         = null;
+        apiKey        = null;
     }
 
-    /**
-     * Returns the {@code Cookie} header value to include on every API call:
-     * {@code clientId=<id>; x-auth-token=<token>}
-     */
-    public String cookieHeader() {
-        return "clientId=" + clientId + "; x-auth-token=" + authToken;
+    /** The token to send as the {@code api-key} header on each authenticated call. */
+    public String getApiKey() {
+        return apiKey;
     }
-
-    /** Returns the CSRF nonce to send as the {@code x-nonce} request header. */
-    public String getNonce() {
-        return nonce;
-    }
-
-    // -------------------------------------------------------------------------
-    // Internal login flow
-    // -------------------------------------------------------------------------
 
     private void login() {
-        String formBody = "j_username=" + encode(props.getAuth().getUsername())
-                        + "&j_password=" + encode(props.getAuth().getPassword());
+        Map<String, String> body = Map.of(
+                "username", props.getAuth().getUsername() == null ? "" : props.getAuth().getUsername(),
+                "password", props.getAuth().getPassword() == null ? "" : props.getAuth().getPassword()
+        );
 
-        log.info("Authenticating with TDC at {}", props.getBaseUrl());
+        log.info("Authenticating with TDC at {}{} (user {})",
+                props.getBaseUrl(), LOGIN_PATH, props.getAuth().getUsername());
 
-        // POST the login form.  The server responds with HTTP 302 and sets
-        // x-auth-token + clientId cookies.  The underlying HttpClient is
-        // configured with Redirect.NEVER so the 302 is visible here and we can
-        // extract the Set-Cookie headers before any redirect is followed.
-        http.post()
-                .uri(LOGIN_PATH)
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(formBody)
-                .exchange((req, resp) -> {
-                    List<String> setCookies = resp.getHeaders().get(HttpHeaders.SET_COOKIE);
-                    if (setCookies != null) {
-                        for (String cookie : setCookies) {
-                            // Each Set-Cookie value is like: name=value; Path=/MM; ...
-                            String nameValue = cookie.split(";")[0];
-                            if (nameValue.startsWith("x-auth-token=")) {
-                                authToken = nameValue.substring("x-auth-token=".length());
-                            } else if (nameValue.startsWith("clientId=")) {
-                                clientId = nameValue.substring("clientId=".length());
-                            }
-                        }
-                    }
-                    return null;
-                });
-
-        if (authToken == null) {
-            throw new TdcApiException(
-                    "TDC login failed: no x-auth-token cookie in response from " + LOGIN_PATH, null);
+        Map<String, Object> response;
+        try {
+            response = http.post()
+                    .uri(LOGIN_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(new org.springframework.core.ParameterizedTypeReference<>() {});
+        } catch (RestClientException ex) {
+            throw new TdcApiException("TDC /auth/login failed: " + ex.getMessage(), ex);
         }
 
-        // Fetch session info to obtain the per-session CSRF nonce required on
-        // every subsequent request as the x-nonce header.
-        @SuppressWarnings("unchecked")
-        Map<String, Object> sessionInfo = http.post()
-                .uri(SESSION_INFO_PATH)
-                .header(HttpHeaders.COOKIE, cookieHeader())
-                .header("X-Requested-With", "XMLHttpRequest")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body("{}")
-                .retrieve()
-                .body(Map.class);
-
-        if (sessionInfo == null || sessionInfo.get("nonce") == null) {
-            throw new TdcApiException("TDC GetSessionInfo returned no nonce", null);
+        Object token = response == null ? null : response.get("token");
+        if (!(token instanceof String tokenStr) || tokenStr.isBlank()) {
+            // Surface the response so the user can compare against the docs if a
+            // field name differs on their build.
+            throw new TdcApiException("TDC /auth/login returned no token; body=" + safeBody(response), null);
         }
 
-        nonce         = (String) sessionInfo.get("nonce");
+        apiKey        = tokenStr;
         authenticated = true;
-        log.info("TDC session established. User: {}, nonce: {}", sessionInfo.get("userName"), nonce);
+        log.info("TDC login successful (token length {})", tokenStr.length());
     }
 
-    private static String encode(String s) {
-        return URLEncoder.encode(s == null ? "" : s, StandardCharsets.UTF_8);
+    private static Map<String, Object> safeBody(Map<String, Object> body) {
+        if (body == null) {
+            return Map.of();
+        }
+        // Don't leak the token in error messages (defensive — we land here only when token is missing).
+        Map<String, Object> safe = new LinkedHashMap<>(body);
+        safe.replaceAll((k, v) -> "token".equalsIgnoreCase(k) ? "<redacted>" : v);
+        return safe;
     }
 }

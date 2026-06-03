@@ -2,36 +2,28 @@ package com.talend.framework.metadata_framework.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
-
-import java.net.http.HttpClient;
-import java.time.Duration;
 
 @Configuration
 public class RestClientConfig {
 
     /**
-     * Builds the shared TDC HTTP client.
+     * The shared TDC HTTP client. Base URL is {@code base-url + api-path}
+     * (e.g. {@code http://localhost:11480/MM/rest/v1}), so endpoint paths
+     * in callers are short — {@code /auth/login}, {@code /...}.
      *
-     * <p>Key configuration: {@code Redirect.NEVER} — the TDC login endpoint
-     * responds with HTTP 302 and sets the session cookies ({@code x-auth-token},
-     * {@code clientId}) on that redirect response.  If the client followed the
-     * redirect automatically those Set-Cookie headers would be lost.  Keeping
-     * redirect following disabled lets {@link
-     * com.talend.framework.metadata_framework.tdc.TdcSession} capture them via
-     * the {@code exchange()} callback before the redirect is followed.
+     * <p>Authentication is API-key based: {@link com.talend.framework.metadata_framework.tdc.TdcSession}
+     * POSTs to {@code /auth/login} once to obtain a token, and
+     * {@link com.talend.framework.metadata_framework.tdc.TdcRestClient} sends
+     * it on every call as the {@code api-key} request header. No cookies or
+     * CSRF nonce are involved, so no redirect special-casing is needed.
      */
     @Bean
     public RestClient tdcHttpClient(TdcProperties props) {
-        HttpClient jdkClient = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .connectTimeout(Duration.ofMillis(props.getRequest().getConnectTimeoutMs()))
-                .build();
-
+        String baseUrl = (props.getBaseUrl() == null ? "" : props.getBaseUrl())
+                + (props.getApiPath() == null ? "" : props.getApiPath());
         return RestClient.builder()
-                .baseUrl(props.getBaseUrl())
-                .requestFactory(new JdkClientHttpRequestFactory(jdkClient))
+                .baseUrl(baseUrl)
                 .build();
     }
 }

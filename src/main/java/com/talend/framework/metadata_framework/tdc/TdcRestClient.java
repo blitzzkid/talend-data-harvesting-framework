@@ -20,32 +20,25 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * TDC client using the internal {@code /MM/api/} RPC API with session auth.
+ * TDC client against the official Metadata Management REST API (base
+ * {@code /MM/rest/v1}).
  *
- * <h3>Flow</h3>
- * <ol>
- *   <li>{@link TdcSession} logs in (POST {@code /MM/j_spring_security_check}),
- *       capturing {@code x-auth-token} + {@code clientId} and the CSRF
- *       {@code nonce}.</li>
- *   <li>Each call is a POST carrying {@code Cookie}, {@code x-nonce} and
- *       {@code X-Requested-With: XMLHttpRequest}.</li>
- *   <li>On 401/403 the session is invalidated and the call retried once.</li>
- * </ol>
+ * <h3>Auth</h3>
+ * {@link TdcSession} POSTs to {@code /auth/login} once to obtain a token; every
+ * call here sends it as the {@code api-key} header. On 401/403 the session is
+ * invalidated and the call retried once.
  *
  * <h3>Endpoints — not yet known</h3>
- * The operation paths are <b>not</b> hardcoded. Set {@code tdc.api.refresh-path}
- * and {@code tdc.api.lineage-path} to the values observed in Chrome DevTools &gt;
- * Network while doing the equivalent action in the TDC UI (re-import a model;
- * create/edit a data mapping). The payload builders below produce a reasonable
- * JSON shape; adjust them to match the captured body. Until a path is set, the
- * call fails with a clear message rather than guessing.
+ * The refresh/lineage operation paths are <b>not</b> hardcoded. Set
+ * {@code tdc.api.refresh-path} and {@code tdc.api.lineage-path} to the real
+ * endpoint paths once identified (Swagger or DevTools). The payload builders
+ * below produce a reasonable JSON shape; adjust them to match the contract.
+ * Until a path is set, the call fails with a clear message rather than guessing.
  */
 @Component
 public class TdcRestClient implements TdcClient {
 
     private static final Logger log = LoggerFactory.getLogger(TdcRestClient.class);
-
-    private static final String SESSION_INFO_PATH = "/MM/api/GetSessionInfo";
 
     private final RestClient http;
     private final TdcSession session;
@@ -62,18 +55,12 @@ public class TdcRestClient implements TdcClient {
     @Override
     public boolean ping() {
         try {
-            session.ensureAuthenticated();
-            http.post()
-                    .uri(SESSION_INFO_PATH)
-                    .headers(this::applyAuthHeaders)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body("{}")
-                    .retrieve()
-                    .toBodilessEntity();
-            return true;
-        } catch (RestClientException ex) {
-            log.debug("TDC ping failed: {}", ex.getMessage());
+            // Force a fresh login so /harvest/status is a real end-to-end auth check.
             session.invalidate();
+            session.ensureAuthenticated();
+            return session.getApiKey() != null;
+        } catch (RuntimeException ex) {
+            log.debug("TDC ping failed: {}", ex.getMessage());
             return false;
         }
     }
@@ -135,9 +122,7 @@ public class TdcRestClient implements TdcClient {
     }
 
     private void applyAuthHeaders(HttpHeaders headers) {
-        headers.add(HttpHeaders.COOKIE, session.cookieHeader());
-        headers.add("x-nonce", session.getNonce());
-        headers.add("X-Requested-With", "XMLHttpRequest");
+        headers.add("api-key", session.getApiKey());
     }
 
     private String requirePath(String path, String key) {
