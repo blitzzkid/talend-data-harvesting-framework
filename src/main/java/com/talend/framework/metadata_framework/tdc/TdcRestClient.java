@@ -60,7 +60,8 @@ public class TdcRestClient implements TdcClient {
             session.ensureAuthenticated();
             return session.getApiKey() != null;
         } catch (RuntimeException ex) {
-            log.debug("TDC ping failed: {}", ex.getMessage());
+            log.warn("TDC ping failed — check base-url, api-path, and credentials: {}", ex.getMessage());
+            log.debug("TDC ping stack trace", ex);
             return false;
         }
     }
