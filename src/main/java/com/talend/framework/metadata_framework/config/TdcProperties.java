@@ -11,34 +11,28 @@ public class TdcProperties {
 
     private String baseUrl;
     private String apiPath;
-    /** The PostgreSQL (JDBC) Imported Model — the harvested tables/columns ("the dots") to refresh. */
-    private String harvestedModelId;
-    /** The Data Mapping model the audit lineage is pushed into ("the connections"), stitched to the harvested model. */
-    private String lineageModelId;
+    /**
+     * The content ID (e.g. {@code -1_56}) of the PostgreSQL (JDBC) Imported Model.
+     * Found in the TDC browser URL when the model is selected: {@code objectId=-1_XX}.
+     */
+    private String harvestedModelContentId;
+    /**
+     * The content ID (e.g. {@code -1_39}) of the Data Mapping Script model.
+     * Found in the TDC browser URL when the model is selected: {@code objectId=-1_XX}.
+     */
+    private String lineageModelContentId;
+    /**
+     * The configuration ID (e.g. {@code -1_4}) that both models belong to.
+     * Found in the TDC browser URL: {@code configId=-1_XX}.
+     */
+    private String configId;
     private Auth auth = new Auth();
     private Request request = new Request();
-    private Api api = new Api();
-
-    /**
-     * Write endpoints for the internal {@code /MM/api/} RPC API the TDC web UI
-     * uses (the documented {@code /MM/api/v1} REST API is not the one in play
-     * here). These are not publicly documented: capture the exact operation
-     * path and JSON payload from Chrome DevTools &gt; Network while performing
-     * the refresh/import in the TDC UI, then set them here. Left blank until
-     * confirmed, so a misconfigured call fails loudly instead of guessing.
-     */
-    @Getter
-    @Setter
-    public static class Api {
-        private String refreshPath;
-        private String lineagePath;
-    }
+    private Ssh ssh = new Ssh();
 
     @Getter
     @Setter
     public static class Auth {
-        private String type = "bearer";
-        private String token;
         private String username;
         private String password;
     }
@@ -47,6 +41,34 @@ public class TdcProperties {
     @Setter
     public static class Request {
         private int connectTimeoutMs = 5000;
-        private int readTimeoutMs = 30000;
+        private int readTimeoutMs = 60000;
+    }
+
+    /**
+     * SSH credentials for delivering the generated lineage SQL file to the TDC VM.
+     * The file is written to {@code remoteSqlPath} via SCP, then TDC reads it
+     * from there when {@code ImportHarvestableContent} is called.
+     *
+     * <p>Supports either private-key auth ({@code privateKeyPath}) or password auth.
+     * Private key is preferred — set {@code privateKeyPath} and leave {@code password} blank.
+     */
+    @Getter
+    @Setter
+    public static class Ssh {
+        private String host;
+        private int port = 22;
+        private String username;
+        /** Optional: password for the private key (leave blank if key has no passphrase). */
+        private String passphrase;
+        /** Optional: plain password auth (use only if private key is not available). */
+        private String password;
+        /**
+         * Path to the SSH private key file. Accepts both Linux paths
+         * (e.g. {@code /home/melvtan/.ssh/id_rsa}) and Windows UNC paths to WSL
+         * (e.g. {@code \\\\wsl.localhost\\Ubuntu-24.04\\home\\melvtan\\.ssh\\id_rsa}).
+         */
+        private String privateKeyPath;
+        /** Absolute path on the TDC VM where the lineage SQL file is written. */
+        private String remoteSqlPath;
     }
 }

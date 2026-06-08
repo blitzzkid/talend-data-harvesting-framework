@@ -24,6 +24,6 @@ public interface TdcClient {
     /** Trigger TDC to re-harvest (refresh) the harvested JDBC model so it syncs with the database. */
     void refreshModel(String modelId);
 
-    /** Push the audit-derived source→target lineage into the given Data Mapping model. */
+    /** Push the audit-derived source→target lineage SQL into the given Data Mapping model. */
     void pushLineage(String modelId, JobLineageGraph graph);
 }

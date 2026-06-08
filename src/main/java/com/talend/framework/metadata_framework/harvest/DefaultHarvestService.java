@@ -2,12 +2,13 @@ package com.talend.framework.metadata_framework.harvest;
 
 import com.talend.framework.metadata_framework.audit.AuditPayloadParser;
 import com.talend.framework.metadata_framework.audit.AuditRecord;
-import com.talend.framework.metadata_framework.audit.StepInfo;
 import com.talend.framework.metadata_framework.audit.AuditRecordRepository;
+import com.talend.framework.metadata_framework.audit.StepInfo;
 import com.talend.framework.metadata_framework.config.TdcProperties;
 import com.talend.framework.metadata_framework.model.JobLineageGraph;
 import com.talend.framework.metadata_framework.model.ParsedAuditRecord;
 import com.talend.framework.metadata_framework.tdc.TdcClient;
+import com.talend.framework.metadata_framework.tdc.TdcSshClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -26,17 +27,23 @@ public class DefaultHarvestService implements HarvestService {
     private final AuditRecordRepository repo;
     private final AuditPayloadParser parser;
     private final LineageBuilder lineageBuilder;
+    private final LineageSqlGenerator sqlGenerator;
+    private final TdcSshClient sshClient;
     private final TdcClient tdcClient;
     private final TdcProperties tdcProperties;
 
     public DefaultHarvestService(AuditRecordRepository repo,
                                  AuditPayloadParser parser,
                                  LineageBuilder lineageBuilder,
+                                 LineageSqlGenerator sqlGenerator,
+                                 TdcSshClient sshClient,
                                  TdcClient tdcClient,
                                  TdcProperties tdcProperties) {
         this.repo = repo;
         this.parser = parser;
         this.lineageBuilder = lineageBuilder;
+        this.sqlGenerator = sqlGenerator;
+        this.sshClient = sshClient;
         this.tdcClient = tdcClient;
         this.tdcProperties = tdcProperties;
     }
@@ -95,27 +102,30 @@ public class DefaultHarvestService implements HarvestService {
         // 1) Refresh the harvested JDBC model so TDC's "dots" match the live DB.
         boolean modelRefreshed = false;
         try {
-            tdcClient.refreshModel(tdcProperties.getHarvestedModelId());
+            tdcClient.refreshModel(null);
             modelRefreshed = true;
         } catch (Exception ex) {
-            log.warn("TDC model refresh failed — {}", ex.getMessage());
+            log.warn("TDC model refresh failed -- {}", ex.getMessage());
             failures.add("refresh: " + ex.getMessage());
         }
 
-        // 2) Push the audit-derived lineage so TDC can "connect the dots".
+        // 2) Generate the lineage SQL, deliver it to the TDC VM via SFTP, then trigger the import.
         int edgesPushed = 0;
         if (!graph.edges().isEmpty()) {
             try {
-                tdcClient.pushLineage(tdcProperties.getLineageModelId(), graph);
+                String sql = sqlGenerator.generate(graph);
+                log.debug("Generated lineage SQL ({} chars) for job={}", sql.length(), jobName);
+                sshClient.uploadSql(sql);
+                tdcClient.pushLineage(null, graph);
                 edgesPushed = graph.edges().size();
             } catch (Exception ex) {
-                log.warn("TDC lineage push failed — {}", ex.getMessage());
+                log.warn("TDC lineage push failed -- {}", ex.getMessage());
                 failures.add("lineage: " + ex.getMessage());
             }
         }
 
         String message = failures.isEmpty()
-                ? "OK — refreshed model and pushed " + edgesPushed + " lineage edge(s)"
+                ? "OK -- refreshed model and pushed " + edgesPushed + " lineage edge(s)"
                 : failures.size() + " call(s) failed; see failures";
         return new HarvestResult(jobName, considered, edgesPushed, modelRefreshed,
                 failures, message);

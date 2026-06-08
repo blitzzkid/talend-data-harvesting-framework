@@ -5,6 +5,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
+import java.net.CookieManager;
+import java.net.CookiePolicy;
 import java.net.http.HttpClient;
 import java.time.Duration;
 
@@ -16,10 +18,11 @@ public class RestClientConfig {
      * (e.g. {@code http://localhost:11480/MM/rest/v1}), so endpoint paths
      * in callers are short — {@code /auth/login}, {@code /...}.
      *
-     * <p>Uses the Spring Boot auto-configured {@link RestClient.Builder} so that
-     * all default message converters (Jackson, String, etc.) are pre-registered.
-     * Using the static {@code RestClient.builder()} factory instead can leave
-     * Jackson converters missing, causing the request body to be sent empty.
+     * <p>A {@link CookieManager} is attached so the JDK HttpClient automatically
+     * stores and replays all cookies set by the server (including {@code JSESSIONID}
+     * from the TDC home page and {@code x-auth-token} set via Set-Cookie).
+     * This is required because the internal {@code /MM/api/} endpoints need a live
+     * HTTP session established before they accept the auth token.
      */
     @Bean
     public RestClient tdcHttpClient(TdcProperties props) {
@@ -28,6 +31,7 @@ public class RestClientConfig {
 
         HttpClient jdkClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(props.getRequest().getConnectTimeoutMs()))
+                .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL))
                 .build();
 
         return RestClient.builder()

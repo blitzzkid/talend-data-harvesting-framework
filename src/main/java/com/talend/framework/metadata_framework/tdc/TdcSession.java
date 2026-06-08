@@ -54,6 +54,7 @@ public class TdcSession {
 
     public synchronized void ensureAuthenticated() {
         if (!authenticated) {
+            warmUpSession();
             login();
         }
     }
@@ -88,6 +89,28 @@ public class TdcSession {
     // -------------------------------------------------------------------------
     // Internal helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * GETs the TDC home page so the server creates an HTTP session and sets a
+     * {@code JSESSIONID} cookie. The {@link java.net.CookieManager} in the
+     * underlying JDK HttpClient stores it automatically and replays it on all
+     * subsequent requests — including the internal {@code /MM/api/} calls that
+     * require an active browser session in addition to the auth token.
+     */
+    private void warmUpSession() {
+        String homeUrl = (props.getBaseUrl() == null ? "" : props.getBaseUrl()) + "/MM/";
+        try {
+            http.get()
+                    .uri(homeUrl)
+                    .retrieve()
+                    .toBodilessEntity();
+            log.debug("TDC session warm-up GET {} succeeded", homeUrl);
+        } catch (Exception ex) {
+            // Non-fatal: a redirect or 4xx from the home page is fine — we just
+            // need the server to issue a JSESSIONID in its response headers.
+            log.debug("TDC session warm-up GET {} (non-fatal): {}", homeUrl, ex.getMessage());
+        }
+    }
 
     private void login() {
         // Pre-serialize to JSON string so StringHttpMessageConverter writes the bytes verbatim.

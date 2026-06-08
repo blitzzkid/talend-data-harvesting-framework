@@ -1,44 +1,39 @@
 package com.talend.framework.metadata_framework.tdc;
 
 import com.talend.framework.metadata_framework.config.TdcProperties;
-import com.talend.framework.metadata_framework.model.Dataset;
 import com.talend.framework.metadata_framework.model.JobLineageGraph;
-import com.talend.framework.metadata_framework.model.LineageEdge;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
- * TDC client against the official Metadata Management REST API (base
- * {@code /MM/rest/v1}).
+ * TDC client using the official Metadata Management REST API ({@code /MM/rest/v1}).
  *
  * <h3>Auth</h3>
- * {@link TdcSession} POSTs to {@code /auth/login} once to obtain a token; every
- * call here sends it as the {@code api-key} header. On 401/403 the session is
- * invalidated and the call retried once.
+ * Every call sends the token returned by {@link TdcSession} as the
+ * {@code api-key} request header (the scheme documented in the MITI Swagger spec).
  *
- * <h3>Endpoints — not yet known</h3>
- * The refresh/lineage operation paths are <b>not</b> hardcoded. Set
- * {@code tdc.api.refresh-path} and {@code tdc.api.lineage-path} to the real
- * endpoint paths once identified (Swagger or DevTools). The payload builders
- * below produce a reasonable JSON shape; adjust them to match the contract.
- * Until a path is set, the call fails with a clear message rather than guessing.
+ * <h3>Endpoints used</h3>
+ * <ul>
+ *   <li>{@code POST /operations/startImport/{contentId}} — triggers a new JDBC harvest
+ *       (the "dots" model).</li>
+ *   <li>{@code POST /dataMapping/importScript} — uploads the generated lineage SQL and
+ *       imports it into the Data Mapping Script model (no SSH required).</li>
+ * </ul>
  */
 @Component
 public class TdcRestClient implements TdcClient {
 
     private static final Logger log = LoggerFactory.getLogger(TdcRestClient.class);
+
+    /** Official REST API path for triggering a model import. */
+    private static final String START_IMPORT_PATH = "/operations/startImport/";
 
     private final RestClient http;
     private final TdcSession session;
@@ -55,128 +50,70 @@ public class TdcRestClient implements TdcClient {
     @Override
     public boolean ping() {
         try {
-            // Force a fresh login so /harvest/status is a real end-to-end auth check.
             session.invalidate();
             session.ensureAuthenticated();
             return session.getApiKey() != null;
         } catch (RuntimeException ex) {
-            log.warn("TDC ping failed — check base-url, api-path, and credentials: {}", ex.getMessage());
-            log.debug("TDC ping stack trace", ex);
+            log.warn("TDC ping failed: {}", ex.getMessage());
             return false;
         }
     }
 
+    /**
+     * Triggers an import of the JDBC-harvested database model via
+     * {@code POST /operations/startImport/{contentId}}.
+     * Returns immediately with the operation ID; TDC runs the import asynchronously.
+     */
     @Override
     public void refreshModel(String modelId) {
-        String path = requirePath(props.getApi().getRefreshPath(), "tdc.api.refresh-path");
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("modelId", modelId);
-        log.debug("TDC refresh model={}", modelId);
-        postWithAuth(path, body);
-    }
-
-    @Override
-    public void pushLineage(String modelId, JobLineageGraph graph) {
-        String path = requirePath(props.getApi().getLineagePath(), "tdc.api.lineage-path");
-        Map<String, Object> body = lineageBody(modelId, graph);
-        log.debug("TDC push lineage model={} job={} edges={}",
-                modelId, graph.jobName(), graph.edges().size());
-        postWithAuth(path, body);
-    }
-
-    // -------------------------------------------------------------------------
-    // Authenticated POST with one re-login retry on 401/403
-    // -------------------------------------------------------------------------
-
-    private String postWithAuth(String path, Object body) {
+        String contentId = require(props.getHarvestedModelContentId(), "tdc.harvested-model-content-id");
+        log.info("Triggering TDC JDBC harvest via startImport (contentId={})", contentId);
         session.ensureAuthenticated();
         try {
-            return doPost(path, body);
-        } catch (HttpStatusCodeException ex) {
-            int code = ex.getStatusCode().value();
-            if (code == 401 || code == 403) {
-                log.debug("TDC POST {} got {} — re-authenticating and retrying once", path, code);
-                session.invalidate();
-                session.ensureAuthenticated();
-                try {
-                    return doPost(path, body);
-                } catch (RestClientException retry) {
-                    throw new TdcApiException("POST " + path + " failed after re-auth: "
-                            + retry.getMessage(), retry);
-                }
-            }
-            throw new TdcApiException("POST " + path + " failed: " + code + " "
-                    + ex.getResponseBodyAsString(), ex);
+            Map<?, ?> response = http.post()
+                    .uri(START_IMPORT_PATH + contentId)
+                    .header("api-key", session.getApiKey())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body("{}")
+                    .retrieve()
+                    .body(Map.class);
+            log.info("startImport response: {}", response);
         } catch (RestClientException ex) {
-            throw new TdcApiException("POST " + path + " failed: " + ex.getMessage(), ex);
+            throw new TdcApiException("startImport failed: " + ex.getMessage(), ex);
         }
     }
-
-    private String doPost(String path, Object body) {
-        return http.post()
-                .uri(path)
-                .headers(this::applyAuthHeaders)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body)
-                .retrieve()
-                .body(String.class);
-    }
-
-    private void applyAuthHeaders(HttpHeaders headers) {
-        headers.add("api-key", session.getApiKey());
-    }
-
-    private String requirePath(String path, String key) {
-        if (path == null || path.isBlank()) {
-            throw new TdcApiException("TDC endpoint not configured: set '" + key
-                    + "' to the /MM/api operation captured in Chrome DevTools.", null);
-        }
-        return path;
-    }
-
-    // -------------------------------------------------------------------------
-    // Payload builder — adjust field names to match the DevTools-captured body
-    // -------------------------------------------------------------------------
 
     /**
-     * One entry per edge, each side resolved to its real {@code connection /
-     * schema / table} so TDC can stitch it to the harvested model — not the
-     * internal dataset id.
+     * Triggers an import of the Data Mapping Script model via
+     * {@code POST /operations/startImport/{contentId}}.
+     * The SQL file must already be at its configured path on the TDC VM
+     * (delivered via {@link com.talend.framework.metadata_framework.tdc.TdcSshClient})
+     * before this is called. TDC reads it from there when it processes the import.
      */
-    private Map<String, Object> lineageBody(String modelId, JobLineageGraph graph) {
-        Map<String, Dataset> byId = new LinkedHashMap<>();
-        for (Dataset d : graph.datasets()) {
-            byId.put(d.id(), d);
+    @Override
+    public void pushLineage(String modelId, JobLineageGraph graph) {
+        String contentId = require(props.getLineageModelContentId(), "tdc.lineage-model-content-id");
+        log.info("Triggering TDC lineage import via startImport (contentId={}) for job={} edges={}",
+                contentId, graph.jobName(), graph.edges().size());
+        session.ensureAuthenticated();
+        try {
+            Map<?, ?> response = http.post()
+                    .uri(START_IMPORT_PATH + contentId)
+                    .header("api-key", session.getApiKey())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body("{}")
+                    .retrieve()
+                    .body(Map.class);
+            log.info("startImport (lineage) response: {}", response);
+        } catch (RestClientException ex) {
+            throw new TdcApiException("startImport (lineage) failed: " + ex.getMessage(), ex);
         }
-
-        List<Map<String, Object>> edges = new ArrayList<>(graph.edges().size());
-        for (LineageEdge e : graph.edges()) {
-            Dataset source = byId.get(e.sourceDatasetId());
-            Dataset target = byId.get(e.targetDatasetId());
-            if (source == null || target == null) {
-                continue;
-            }
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("source", endpointRef(source));
-            entry.put("target", endpointRef(target));
-            if (e.stage() != null) entry.put("stage", e.stage().name());
-            if (e.component() != null) entry.put("component", e.component());
-            edges.add(entry);
-        }
-
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("modelId", modelId);
-        body.put("jobName", graph.jobName());
-        body.put("edges", edges);
-        return body;
     }
 
-    private Map<String, Object> endpointRef(Dataset d) {
-        Map<String, Object> ref = new LinkedHashMap<>();
-        ref.put("type", d.kind() == Dataset.Kind.FILE ? "File" : "Table");
-        if (d.connectionName() != null) ref.put("connection", d.connectionName());
-        if (d.schemaName() != null) ref.put("schema", d.schemaName());
-        ref.put("name", d.name());
-        return ref;
+    private String require(String value, String key) {
+        if (value == null || value.isBlank()) {
+            throw new TdcApiException("TDC config missing: set '" + key + "' in application-local.yml", null);
+        }
+        return value;
     }
 }

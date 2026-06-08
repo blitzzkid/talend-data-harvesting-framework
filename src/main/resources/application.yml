@@ -31,28 +31,31 @@ management:
         include: health,info,metrics
 
 tdc:
-  base-url: ${TDC_URL:https://tdc-vm.local}
-  # Base path of the official MIMM REST API (see
-  # https://metaintegration.net/Products/MIMM/REST-API/). Appended to base-url
-  # by RestClientConfig, so callers use short paths like /auth/login.
+  base-url: ${TDC_URL:http://localhost:11480}
+  # Base path of the official MIMM REST API. Appended to base-url by RestClientConfig.
   api-path: ${TDC_API_PATH:/MM/rest/v1}
-  # The PostgreSQL (JDBC) Imported Model — the harvested tables/columns ("the dots").
-  harvested-model-id: ${TDC_HARVESTED_MODEL_ID:}
-  # The Data Mapping model the audit lineage is pushed into ("the connections").
-  lineage-model-id: ${TDC_LINEAGE_MODEL_ID:}
+  # Content ID of the PostgreSQL JDBC Imported Model ("the dots").
+  # Found in TDC browser URL when the model is selected: objectId=-1_XX → value is -1_XX.
+  harvested-model-content-id: ${TDC_HARVESTED_CONTENT_ID:}
+  # Content ID of the Data Mapping Script model ("the lines").
+  lineage-model-content-id: ${TDC_LINEAGE_CONTENT_ID:}
+  # Configuration ID that both models belong to (configId=-1_XX in browser URL).
+  config-id: ${TDC_CONFIG_ID:}
   auth:
-    # TDC uses session-based auth: credentials are POSTed once to
-    # /MM/j_spring_security_check; the auth.type field is no longer used.
     username: ${TDC_USER:}
     password: ${TDC_PASSWORD:}
   request:
     connect-timeout-ms: 5000
-    read-timeout-ms: 30000
-  # Internal /MM/api operation paths. Capture the exact path + payload from
-  # Chrome DevTools > Network in the TDC UI, then set here. Blank until known.
-  api:
-    refresh-path: ${TDC_REFRESH_PATH:}      # re-harvest the harvested-model-id
-    lineage-path: ${TDC_LINEAGE_PATH:}      # push lineage into lineage-model-id
+    read-timeout-ms: 60000
+  # SSH credentials for delivering the generated lineage SQL to the TDC VM via SFTP.
+  ssh:
+    host: ${TDC_SSH_HOST:10.4.20.156}
+    port: 22
+    username: ${TDC_SSH_USER:work-admin}
+    password: ${TDC_SSH_PASSWORD:}
+    # Absolute path on the TDC VM where the lineage SQL file is written.
+    # Must match the path configured in the Data Mapping Script model's Import Setup.
+    remote-sql-path: ${TDC_SSH_SQL_PATH:/home/work-admin/SQL/customer_pipeline.sql}
 
 ---
 spring:
