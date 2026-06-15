@@ -49,8 +49,8 @@ tdc:
     read-timeout-ms: 60000
   # SSH credentials for delivering the generated lineage SQL to the TDC VM via SFTP.
   ssh:
-    host: ${TDC_SSH_HOST:10.4.20.156}
-    port: 22
+    host: ${TDC_SSH_HOST:localhost}
+    port: ${TDC_SSH_PORT:2222}
     username: ${TDC_SSH_USER:work-admin}
     password: ${TDC_SSH_PASSWORD:}
     # Absolute path on the TDC VM where the lineage SQL file is written.

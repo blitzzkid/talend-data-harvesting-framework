@@ -97,13 +97,12 @@ tdc:
   lineage-model-content-id:   "-1_39"   # from Step 2 (your value may differ)
   config-id:                  "-1_4"    # from Step 3 (your value may differ)
   ssh:
-    host: 10.4.20.156                   # TDC VM — direct, no tunnel needed for SSH
+    host: localhost                      # via WSL tunnel (Terminal 2)
+    port: 2222                           # local end of the SSH tunnel to TDC VM port 22
     username: work-admin
     password: <your-ssh-password>
     remote-sql-path: /home/work-admin/SQL/customer_pipeline.sql
 ```
-
-> **Important**: The SSH connection goes **directly** to `10.4.20.156` — not through localhost. TDC REST API calls go through `localhost:11480` (the SSH tunnel). These are two separate connections.
 
 ---
 
@@ -123,7 +122,8 @@ tdc:
   lineage-model-content-id:   "-1_39"
   config-id:                  "-1_4"
   ssh:
-    host: 10.4.20.156
+    host: localhost
+    port: 2222
     username: work-admin
     password: <your-ssh-password>
     remote-sql-path: /home/work-admin/SQL/customer_pipeline.sql
@@ -139,30 +139,34 @@ spring:
 
 ## Connectivity — SSH tunnels (required before every run)
 
-The development machine (Windows) cannot reach the on-premise VMs directly.  
-Twingate routes are WSL-only, so SSH tunnels are used to bridge the REST API and the PostgreSQL database to Windows localhost.
+The development machine (Windows) cannot reach the on-premise VMs directly — Twingate routes are WSL-only. Three SSH tunnels bridge all required connections to Windows localhost.
 
-Open **two WSL terminals** and keep them running while the app is active:
+Open **three WSL terminals** and keep them running while the app is active:
 
-**Terminal 1 — Talend Data Catalog REST API (10.4.20.156)**
+**Terminal 1 — TDC REST API (10.4.20.156)**
 ```bash
 ssh -N -L 11480:localhost:11480 work-admin@10.4.20.156
 ```
 
-**Terminal 2 — PostgreSQL / Talend Studio (10.4.20.136)**
+**Terminal 2 — TDC SFTP / SSH (10.4.20.156 port 22)**
+```bash
+ssh -N -L 2222:localhost:22 work-admin@10.4.20.156
+```
+
+**Terminal 3 — PostgreSQL / Talend Studio (10.4.20.136)**
 ```bash
 ssh -N -L 5433:localhost:5432 work-admin@10.4.20.136
 ```
 
-WSL2 automatically forwards these ports to Windows, so the Java process sees them as `localhost:11480` and `localhost:5433`.  
-PostgreSQL sees the connection as coming from its own localhost, so no `pg_hba.conf` changes are needed.
+WSL2 automatically forwards these ports to Windows, so the Java process sees them as `localhost:11480`, `localhost:2222`, and `localhost:5433`.
 
-> **Note**: The SFTP delivery of the lineage SQL connects **directly** to `10.4.20.156:22` — this uses Twingate, which works from WSL but **also works from Windows Java** as a direct TCP connection. No tunnel needed for SSH port 22.
+> Update `tdc.ssh.host` to `localhost` and `tdc.ssh.port` to `2222` in `application-local.yml` to route SFTP through Terminal 2.
 
 > **Optional — persistent tunnels with autossh** (auto-reconnects on drop):
 > ```bash
 > sudo apt install autossh
 > autossh -N -f -L 11480:localhost:11480 work-admin@10.4.20.156
+> autossh -N -f -L 2222:localhost:22     work-admin@10.4.20.156
 > autossh -N -f -L 5433:localhost:5432   work-admin@10.4.20.136
 > ```
 
@@ -234,9 +238,20 @@ Tests mock both the database and TDC client, so **no SSH tunnels or running serv
 
 ---
 
+## End-to-end steps (do this in order every time)
+
+> The Spring Boot service only reads from the audit table — it does not run the ETL pipeline. You must run the Talend Studio job first so the audit rows exist before triggering a harvest.
+
+1. **Open the three WSL tunnels** (see Connectivity section above)
+2. **Run the ETL job in Talend Studio** on VM `10.4.20.136` — this populates `audit_table` in PostgreSQL
+3. **Start the Spring Boot app** (Option A or B below)
+4. **Trigger the harvest** via the PowerShell command below
+
+---
+
 ## Trigger a harvest
 
-With the app running and both WSL tunnels open, run this in PowerShell:
+With the app running and all three WSL tunnels open, run this in PowerShell:
 
 ```powershell
 Invoke-RestMethod -Method Post "http://localhost:8080/harvest/job/ETL_MetadataDrivenCSV2Postgres_2" | ConvertTo-Json -Depth 8
