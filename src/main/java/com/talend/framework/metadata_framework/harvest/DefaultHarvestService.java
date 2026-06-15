@@ -100,13 +100,20 @@ public class DefaultHarvestService implements HarvestService {
         List<String> failures = new ArrayList<>();
 
         // 1) Refresh the harvested JDBC model so TDC's "dots" match the live DB.
+        // NOTE: The startImport REST API for JDBC bridge models requires the TDC Import
+        // Bridge Server to be in a specific state that only the UI initialises. This call
+        // may fail with "not prepared for metadata harvesting" when triggered via API even
+        // though the model is correctly configured. This is a TDC limitation — the failure
+        // is logged as a warning but does NOT block the lineage import (step 2), which is
+        // the primary purpose of this service. Refresh the JDBC model manually from the
+        // TDC UI (Repository Manager → PostgreSQL Database (via JDBC) → Import) when the
+        // database schema changes.
         boolean modelRefreshed = false;
         try {
             tdcClient.refreshModel(null);
             modelRefreshed = true;
         } catch (Exception ex) {
-            log.warn("TDC model refresh failed -- {}", ex.getMessage());
-            failures.add("refresh: " + ex.getMessage());
+            log.warn("TDC JDBC model refresh skipped (TDC limitation -- trigger manually from UI if schema changed): {}", ex.getMessage());
         }
 
         // 2) Generate the lineage SQL, deliver it to the TDC VM via SFTP, then trigger the import.
@@ -125,7 +132,7 @@ public class DefaultHarvestService implements HarvestService {
         }
 
         String message = failures.isEmpty()
-                ? "OK -- refreshed model and pushed " + edgesPushed + " lineage edge(s)"
+                ? "OK -- pushed " + edgesPushed + " lineage edge(s)" + (modelRefreshed ? " and refreshed JDBC model" : "")
                 : failures.size() + " call(s) failed; see failures";
         return new HarvestResult(jobName, considered, edgesPushed, modelRefreshed,
                 failures, message);
