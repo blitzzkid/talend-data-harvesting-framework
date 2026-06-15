@@ -88,11 +88,18 @@ public class LineageBuilder {
             return;
         }
         putDataset(datasets, target);
-        for (NamedColumnSet src : r.sourceSchemas()) {
-            // Bronze sources appear under named keys in the source schema JSON.
-            // A null label means the JSON was an array (degenerate case): fall
-            // back to the source_table_name column.
-            String name = src.label() != null ? src.label() : r.sourceTableName();
+
+        // source_table_name encodes all bronze table names as "table1 + table2 + ...".
+        // The source schema JSON uses generic keys (source1, source2) that do not match
+        // the actual table names in the JDBC model — split the combined name string and
+        // map positionally so TDC can stitch the lineage to the harvested tables.
+        List<String> tableNames = splitSourceTableNames(r.sourceTableName());
+        List<NamedColumnSet> schemas = r.sourceSchemas();
+        for (int i = 0; i < schemas.size(); i++) {
+            NamedColumnSet src = schemas.get(i);
+            String name = (i < tableNames.size() && !tableNames.get(i).isBlank())
+                    ? tableNames.get(i)
+                    : r.sourceTableName();
             Dataset source = tableDataset(name, src.columns());
             if (source == null) {
                 continue;
@@ -100,6 +107,16 @@ public class LineageBuilder {
             putDataset(datasets, source);
             edges.add(new LineageEdge(source.id(), target.id(), r.stage(), r.component()));
         }
+    }
+
+    private List<String> splitSourceTableNames(String combined) {
+        if (combined == null || combined.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(combined.split("\\+"))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .toList();
     }
 
     private void addTableToTable(Map<String, Dataset> datasets, List<LineageEdge> edges,
