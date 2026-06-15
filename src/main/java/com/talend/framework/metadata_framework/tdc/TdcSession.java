@@ -38,7 +38,10 @@ public class TdcSession {
 
     private static final Logger log = LoggerFactory.getLogger(TdcSession.class);
 
-    private static final String LOGIN_PATH  = "/auth/login";
+    // forceLogin=true tells TDC to invalidate any existing session for this user
+    // before creating a new one, preventing "Invalid or Stale session handle" errors
+    // when the browser or another client has logged in independently.
+    private static final String LOGIN_PATH  = "/auth/login?forceLogin=true";
     private static final String LOGOUT_PATH = "/auth/logout";
 
     private final RestClient    http;
