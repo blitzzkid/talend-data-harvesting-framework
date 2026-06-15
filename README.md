@@ -234,6 +234,32 @@ Tests mock both the database and TDC client, so **no SSH tunnels or running serv
 
 ---
 
+## Trigger a harvest
+
+With the app running and both WSL tunnels open, run this in PowerShell:
+
+```powershell
+Invoke-RestMethod -Method Post "http://localhost:8080/harvest/job/ETL_MetadataDrivenCSV2Postgres_2" | ConvertTo-Json -Depth 8
+```
+
+This triggers the full end-to-end flow:
+
+1. Reads all audit rows for the job from PostgreSQL
+2. Builds the lineage graph (file → bronze → silver → gold)
+3. Refreshes the JDBC model in TDC so the catalog matches the live DB
+4. Generates the Data Mapping Script SQL and SFTPs it to the TDC VM
+5. Triggers TDC to import the lineage SQL, building the source → target lineage graph
+
+The response JSON shows how many edges were pushed, whether the model refresh succeeded, and any failures.
+
+To preview what the lineage graph looks like before pushing it to TDC:
+
+```powershell
+Invoke-RestMethod "http://localhost:8080/harvest/job/ETL_MetadataDrivenCSV2Postgres_2/lineage" | ConvertTo-Json -Depth 8
+```
+
+---
+
 ## Project structure
 
 ```
